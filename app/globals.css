@@ -4,6 +4,33 @@
   --background: #ffffff;
   --foreground: #171717;
 }
+@keyframes liquidMorph {
+  0% { transform: scale(1) translate(0, 0); }
+  33% { transform: scale(1.2) translate(5%, -5%); }
+  66% { transform: scale(0.9) translate(-5%, 5%); }
+  100% { transform: scale(1) translate(0, 0); }
+}
+
+.liquid-bg {
+  /* Mesh Gradient using your Palette: Maroon (#3B060A), Gold (#FEBA17), and Blood Red (#8A0000) */
+  background: 
+    radial-gradient(circle at 20% 30%, #8A0000 0%, transparent 50%),
+    radial-gradient(circle at 80% 70%, #FEBA17 0%, transparent 50%),
+    radial-gradient(circle at 50% 50%, #4E1F00 0%, transparent 50%),
+    radial-gradient(circle at 10% 80%, #3B060A 0%, transparent 50%);
+  filter: blur(80px);
+  animation: liquidMorph 15s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 10s linear infinite;
+}
 
 @theme inline {
   --color-background: var(--background);
