@@ -6,9 +6,11 @@ import * as THREE from "three";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/dist/ScrollTrigger";
 import { ScrollToPlugin } from "gsap/dist/ScrollToPlugin";
+import { TextPlugin } from "gsap/dist/TextPlugin";
+import Lenis from "@studio-freight/lenis";
 
 if (typeof window !== "undefined") {
-  gsap.registerPlugin(ScrollTrigger, ScrollToPlugin);
+  gsap.registerPlugin(ScrollTrigger, ScrollToPlugin, TextPlugin);
 }
 
 // --- SHADER MATERIAL FOR LIQUID BACKGROUND ---
@@ -18,16 +20,15 @@ const LiquidBackground = () => {
 
   const uniforms = useMemo(() => ({
     uTime: { value: 0 },
-    uColorBg: { value: new THREE.Color("#3B060A") },
-    uColorGold: { value: new THREE.Color("#FEBA17") },
-    uColorAccent: { value: new THREE.Color("#8A0000") },
+    uColorBg: { value: new THREE.Color("#5B532C") },
+    uColorGold: { value: new THREE.Color("#FFC50F") },
+    uColorAccent: { value: new THREE.Color("#FF9A00") },
     uScroll: { value: 0 },
   }), []);
 
   useFrame((state) => {
     if (meshRef.current) {
       uniforms.uTime.value = state.clock.getElapsedTime() * 0.4;
-      // Smoother lerp for the shader movement
       const targetScroll = typeof window !== "undefined" ? window.scrollY / 2000 : 0;
       uniforms.uScroll.value = THREE.MathUtils.lerp(uniforms.uScroll.value, targetScroll, 0.05);
     }
@@ -35,7 +36,7 @@ const LiquidBackground = () => {
 
   return (
     <mesh ref={meshRef} scale={[viewport.width, viewport.height, 1]}>
-      <planeGeometry args={[1, 1, 16, 16]} /> 
+      <planeGeometry args={[1, 1, 16, 16]} />
       <shaderMaterial
         uniforms={uniforms}
         vertexShader={`
@@ -63,7 +64,7 @@ const LiquidBackground = () => {
             float n = noise(p + movement);
             n += noise(p * 2.0 - uTime * 0.1);
             vec3 color = mix(uColorBg, uColorGold, n * 0.5);
-            color = mix(color, uColorAccent, sin(uScroll * 2.0) * 0.2);
+            color = mix(color, uColorAccent, sin(uScroll * 3.0) * 0.2);
             gl_FragColor = vec4(color, 1.0);
           }
         `}
@@ -117,28 +118,66 @@ export default function DominateSite(): React.ReactElement {
   const [mousePos, setMousePos] = useState<MousePosition>({ x: 0, y: 0 });
 
   useEffect(() => {
+    // FIX: LENIS SCROLL INITIALIZATION
+    const lenis = new Lenis({
+      duration: 1.2,
+      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+      smoothWheel: true,
+    });
+
+    function raf(time: number) {
+      lenis.raf(time);
+      requestAnimationFrame(raf);
+    }
+
+    requestAnimationFrame(raf);
+
+    // Sync Lenis with GSAP ScrollTrigger
+    lenis.on('scroll', ScrollTrigger.update);
+    gsap.ticker.add((time) => {
+      lenis.raf(time * 1000);
+    });
+
     const handleMouseMove = (e: MouseEvent): void => {
-      // Use requestAnimationFrame for smoother cursor updates
       window.requestAnimationFrame(() => {
         setMousePos({ x: e.clientX, y: e.clientY });
       });
     };
     window.addEventListener("mousemove", handleMouseMove, { passive: true });
-    return () => window.removeEventListener("mousemove", handleMouseMove);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      lenis.destroy();
+      gsap.ticker.remove(raf);
+    };
   }, []);
 
   useEffect(() => {
     const ctx = gsap.context(() => {
+      ScrollTrigger.normalizeScroll(true);
+
       // Hero title animation
-      if (heroTitleRef.current) {
-        gsap.from(heroTitleRef.current.querySelectorAll('.hero-line'), {
-          y: 100,
-          opacity: 0,
-          rotateX: -30,
-          stagger: 0.1,
-          duration: 1.2,
-          ease: "power4.out",
-          delay: 0.2
+      const tl = gsap.timeline({ delay: 0.5 });
+      const line3 = document.querySelector('.line-3');
+
+      if (line3) {
+        tl.to(line3, { 
+          duration: 1, 
+          text: "Dominate.", 
+          ease: "none", 
+          opacity: 1 
+        })
+        .to({}, { duration: 0.8 }) 
+        .to(line3, { 
+          duration: 0.5, 
+          text: "", 
+          ease: "none" 
+        })
+        .set(line3, { className: "line-3 hero-line block overflow-hidden italic text-[#FEBA17]" })
+        .to(line3, { 
+          duration: 0.8, 
+          text: "Lead.", 
+          ease: "none" 
         });
       }
 
@@ -159,7 +198,7 @@ export default function DominateSite(): React.ReactElement {
         });
       });
 
-      // Parallax - Optimized
+      // Parallax
       gsap.utils.toArray<HTMLElement>(".parallax-bg").forEach((elem) => {
         gsap.to(elem, {
           yPercent: 30,
@@ -168,21 +207,28 @@ export default function DominateSite(): React.ReactElement {
         });
       });
 
-      // Staggered Reveals
-      gsap.utils.toArray<HTMLElement>(".reveal").forEach((el) => {
-        gsap.from(el, {
-          y: 60,
-          opacity: 0,
-          duration: 1,
-          ease: "power3.out",
-          scrollTrigger: { 
-            trigger: el, 
-            start: "top 90%", 
-            toggleActions: "play none none reverse",
-            fastScrollEnd: true 
-          },
-        });
-      });
+
+const vTrack = document.querySelector(".testimonial-vertical-track");
+
+if (vTrack) {
+  setTimeout(() => {
+    const totalHeight = vTrack.scrollHeight / 2;
+
+    gsap.to(vTrack, {
+      y: `-=${totalHeight}`,
+      duration: 30,
+      ease: "none",
+      repeat: -1,
+      modifiers: {
+        y: (y) => `${parseFloat(y) % totalHeight}px`
+      }
+    });
+  }, 200);
+}
+
+      
+
+    
 
       // Ticker animation
       const track = document.querySelector<HTMLElement>(".testimonial-track");
@@ -202,7 +248,7 @@ export default function DominateSite(): React.ReactElement {
   return (
     <div ref={containerRef} className="bg-[#3B060A] transition-colors duration-700 overflow-x-hidden font-sans selection:bg-[#F5AD18] selection:text-[#3B060A]">
       
-      {/* THREE.JS BACKGROUND LAYER - Optimized for smoothness */}
+      {/* THREE.JS BACKGROUND LAYER */}
       <div className="fixed inset-0 z-0 pointer-events-none">
         <Canvas 
           camera={{ position: [0, 0, 1] }}
@@ -218,7 +264,7 @@ export default function DominateSite(): React.ReactElement {
       {/* Cinematic Grain Overlay */}
       <div className="fixed inset-0 pointer-events-none opacity-[0.06] z-[100] mix-blend-overlay bg-[url('data:image/svg+xml,%3Csvg viewBox=\'0 0 400 400\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'n\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'5\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23n)\'/%3E%3C/svg%3E')]" />
 
-      {/* Custom Cursor - Using Transform for GPU acceleration */}
+      {/* Custom Cursor */}
       <div 
         className="fixed w-8 h-8 border border-[#F5AD18]/30 rounded-full pointer-events-none z-[110] hidden md:block mix-blend-difference will-change-transform"
         style={{ 
@@ -245,14 +291,14 @@ export default function DominateSite(): React.ReactElement {
       <main className="relative z-10">
         {/* SECTION 1: HERO */}
         <section className="story-section min-h-screen flex flex-col justify-center px-6 md:px-12 pt-20">
-          <div className="max-w-7xl">
-            <h1 ref={heroTitleRef} className="font-serif text-[12vw] md:text-[10vw] font-bold leading-[0.8] uppercase tracking-tighter">
-              <div className="hero-line block overflow-hidden">Results</div>
-              <div className="hero-line block overflow-hidden italic text-[#FEBA17]">That Truly</div>
-              <div className="hero-line block overflow-hidden">Dominate.</div>
+          <div className="max-w-7xl ">
+            <h1 ref={heroTitleRef} className="font-serif text-[10vw] md:text-[11vw] font-bold leading-[0.8] tracking-tighter text-[#F5B553] uppercase">
+              <div className="line-1 hero-line block overflow-hidden py-2 ">Results</div>
+              <div className="line-2 hero-line block overflow-hidden py-2 italic text-[#F5B553] ">that <span className="text-[#F5AD18]">Truly</span></div>
+              <div className="line-3 hero-line block overflow-hidden py-2 min-h-[1em]"></div>
             </h1>
-            <div className="mt-12 flex flex-col md:flex-row items-start md:items-end justify-between gap-8">
-              <p className="font-serif italic text-lg md:text-2xl text-[#F5AD18]/60 max-w-xl">
+            <div className="mt-12 pb-8 flex flex-col md:flex-row items-start md:items-end justify-between gap-8">
+              <p className="font-serif italic text-md md:text-2xl text-[#ffffff]/60 max-w-xl">
                 Elite digital protection for high-profile entities. We resolve vulnerabilities and actively defend your online presence.
               </p>
               <div className="flex items-center gap-6">
@@ -268,26 +314,26 @@ export default function DominateSite(): React.ReactElement {
         </section>
 
         {/* SECTION 2: PRINCIPLES */}
-        <section id="about" className="story-section theme-yellow min-h-screen bg-[#4E1F00] text-[#F5AD18] py-24 px-6 md:px-12 flex items-center">
-          <div className="max-w-4xl mx-auto w-full">
+        <section id="about" className="story-section theme-yellow min-h-screen bg-gradient-to-b from-[#470a0f] via-[#470a0f] to-[#290d0f] text-[#FFC50F] border-t-1 border-b-1  border-[#FFC50F]/70 py-20 px-6 md:px-12 flex items-center">
+          <div className="max-w-6xl mx-auto w-full ">
             <div className="flex flex-col md:flex-row justify-between items-start mb-10 gap-8 ">
               <div className="reveal">
-                <p className="text-[9px] uppercase tracking-[0.4em] font-bold mb-6 opacity-60 flex items-center gap-4">
+                <p className="text-[10px] uppercase tracking-[0.4em] font-bold mb-6 opacity-60 flex items-center gap-4">
                   <span className="w-8 h-px bg-[#F5AD18]/40"></span> The Standard
                 </p>
-                <h2 className="font-serif text-6xl md:text-6xl lg:text-6xl font-medium leading-none">
+                <h2 className="font-serif text-6xl md:text-6xl lg:text-8xl font-medium leading-none">
                   Built on <em className="italic opacity-70 font-serif">trust.</em>
                 </h2>
               </div>
               <div className="reveal md:max-w-xs pt-8">
-                <p className="text-sm md:text-base leading-relaxed opacity-60 text-right md:text-left">
+                <p className="text-sm md:text-lg leading-relaxed opacity-60 text-right md:text-left">
                   We operate in the shadows, delivering outcomes with absolute precision and unyielding confidentiality.
                 </p>
               </div>
             </div>
             <div className="grid md:grid-cols-3 gap-2 ">
               {PRINCIPLES.map((p) => (
-                <div key={p.num} className="principle-card reveal p-8 md:p-12 bg-[#3B060A]/20 border border-[#F5AD18]/10 rounded-sm hover:bg-[#3B060A]/40 transition-all duration-500 group relative overflow-hidden">
+                <div key={p.num} className="principle-card reveal p-8 md:p-12 bg-[#3B060A]/20 border border-[#F5AD18]/10 rounded-sm hover:bg-[#6A0000]/40 transition-all duration-500 group relative overflow-hidden">
                   <div className="absolute -bottom-4 -right-4 text-9xl font-serif opacity-[0.03] select-none pointer-events-none group-hover:opacity-[0.05] transition-opacity">{p.num}</div>
                   <div className="flex items-center gap-4 mb-12">
                     <span className="font-serif text-sm opacity-50">[{p.num}]</span>
@@ -302,8 +348,8 @@ export default function DominateSite(): React.ReactElement {
         </section>
 
         {/* SECTION 3: STATS & SERVICES */}
-        <section className="story-section py-22 px-6 md:px-12 ">
-          <div className="lg:mx-50 grid grid-cols-1 lg:grid-cols-2 gap-16 bg-[#3B060A] lg:gap-4 border border-[#F5AD18]/10 items-start">
+        <section className="story-section py-22 px-6 md:px-12 bg-gradient-to-b from-[#290d0f] via-[#301214] to-[#4E1F00]">
+          <div className="lg:mx-50 grid grid-cols-1 lg:grid-cols-2 gap-16  lg:gap-4 border border-[#F5AD18]/10 items-start">
             <div className="reveal space-y-16 p-4">
               <div className="relative text-[#F5AD18]/80 leading-relaxed text-lg font-serif italic max-w-xl">
                 <span className="float-left text-7xl font-serif font-bold text-[#F5AD18] leading-[0.8] mr-4 mt-4">S</span>
@@ -339,7 +385,7 @@ export default function DominateSite(): React.ReactElement {
               Reputation <br/> <em className="italic opacity-60">Management.</em>
             </h2>
             <div className="grid grid-cols-1 lg:grid-cols-12 border border-[#F5AD18]/10 rounded-sm overflow-hidden bg-[#3B060A]/20">
-              <div className="lg:col-span-5 p-4 md:p-8 bg-[#F8F4E1]/90 text-[#3B060A] border-r border-[#F5AD18]/10 relative group">
+              <div className="lg:col-span-5 p-4 md:p-8 bg-[#FFA931]/90 text-[#3B060A] border-r border-[#F5AD18]/10 relative group">
                 <div className="absolute top-0 left-0 w-1 h-20 bg-[#C83F12]"></div>
                 <div className="reveal">
                   <p className="text-[10px] uppercase tracking-[0.4em] font-bold mb-8 opacity-60">{SERVICES[0].area}</p>
@@ -373,20 +419,64 @@ export default function DominateSite(): React.ReactElement {
         </section>
 
         {/* SECTION 5: VOUCHES */}
-        <section id="vouches" className="story-section theme-yellow bg-[#4E1F00] py-20 md:py-32 overflow-hidden">
-          <div className="max-w-6xl mx-auto px-6 mb-12">
-            <h2 className="reveal font-serif text-4xl md:text-6xl text-[#F5AD18]"><em>Vouches.</em></h2>
-          </div>
-          <div className="testimonial-track flex gap-8 whitespace-nowrap will-change-transform">
-            {[...TESTIMONIALS, ...TESTIMONIALS].map((t, i) => (
-              <div key={i} className="flex-shrink-0 w-[320px] md:w-[400px] p-8 md:p-10 bg-[#3B060A] text-[#F5AD18] rounded-3xl hover:scale-105 transition-transform duration-300 whitespace-normal">
-                <div className="text-[10px] uppercase tracking-[0.2em] mb-4 opacity-50">{t.tag}</div>
-                <p className="font-serif italic text-lg md:text-xl mb-8 leading-relaxed">&ldquo;{t.text}&rdquo;</p>
-                <div className="flex justify-between items-center text-[9px] uppercase tracking-widest font-bold">
-                  <span>{t.id}</span><span className="text-[#FEBA17]">Verified</span>
-                </div>
+        <section id="vouches" className="story-section theme-yellow border-t-1 border-[#F5AD18]/70 py-24 px-6 md:px-12 bg-[#3B060A]">
+          <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-16">
+            <div className="lg:col-span-5 h-fit lg:sticky lg:top-32">
+              <div className="reveal">
+                <p className="text-[10px] uppercase tracking-[0.4em] font-bold mb-6 text-[#F5AD18]/60 flex items-center gap-4">
+                  <span className="w-8 h-px bg-[#F5AD18]/40"></span> Testimonials
+                </p>
+                <h2 className="font-serif text-7xl md:text-[8rem] font-medium leading-none text-[#F5AD18] mb-8">
+                  Vouches.
+                </h2>
+                <p className="text-[11px] md:text-[13px] uppercase tracking-[0.2em] leading-relaxed text-[#F5AD18]/50 max-w-sm font-bold">
+                  Verified claims, digital cleanups, asset acquisitions, and absolute discretion from our distinguished client base.
+                </p>
               </div>
-            ))}
+            </div>
+
+            <div className="lg:col-span-7 overflow-hidden h-[500px] relative">
+  <div className="testimonial-vertical-track space-y-6">
+    {[...TESTIMONIALS, ...TESTIMONIALS].map((t, i) => (
+                <div 
+                  key={i} 
+                  className="reveal-card group bg-black/20 border border-[#F5AD18]/10 rounded-2xl p-8 md:p-10 hover:bg-black/40 transition-all duration-500 relative overflow-hidden"
+                >
+                  <div className="flex flex-col md:flex-row gap-8 items-start">
+                    <div className="w-24 h-24 md:w-32 md:h-40 bg-[#F5AD18]/5 rounded-xl flex-shrink-0 border border-[#F5AD18]/10 overflow-hidden grayscale contrast-125 opacity-70 group-hover:opacity-100 transition-opacity">
+                       <div className="w-full h-full bg-gradient-to-b from-[#555] to-[#222] flex items-center justify-center text-[10px] text-[#F5AD18]/20 italic">
+                         Asset_P{i}
+                       </div>
+                    </div>
+
+                    <div className="flex-1">
+                      <div className="flex justify-between items-start mb-6">
+                        <div>
+                          <h4 className="font-serif text-2xl text-[#F5AD18] mb-1">{t.id}</h4>
+                          <p className="text-[9px] uppercase tracking-widest text-[#F5AD18]/40 font-bold">{t.tag}</p>
+                        </div>
+                        <div className="flex items-center gap-2 px-3 py-1 border border-green-500/20 bg-green-500/5 rounded-full">
+                          <span className="w-1 h-1 bg-green-500 rounded-full animate-pulse"></span>
+                          <span className="text-[8px] uppercase font-bold text-green-500 tracking-tighter">Verified</span>
+                        </div>
+                      </div>
+                      
+                      <p className="font-serif italic text-lg md:text-xl text-[#F8F4E1]/80 leading-relaxed mb-8">
+                        &ldquo;{t.text}&rdquo;
+                      </p>
+                      
+                      <div className="flex justify-between items-center border-t border-[#F5AD18]/5 pt-6">
+                        <span className="text-[9px] uppercase tracking-[0.3em] text-[#F5AD18]/20 font-bold">Recent</span>
+                        <div className="w-5 h-5 opacity-20 contrast-0 grayscale">
+                          <div className="border border-[#F5AD18] rounded-full w-full h-full text-[8px] flex items-center justify-center text-[#F5AD18]">D</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                  ))}
+  </div>
+</div>
           </div>
         </section>
 
